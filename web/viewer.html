@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DC Green Map — interactive</title>
+<style>
+  :root { --ink:#e9e2d4; --muted:#a99f8b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0e0a06; color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:24px; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 18px; max-width:720px; font-size:13px; }
+  .wrap { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .stage { background:#140d07; border:1px solid #271c10; border-radius:14px; padding:14px; }
+  canvas { width:min(72vw,620px); height:auto; border-radius:10px; display:block; background:#0e0a06; }
+  .side { width:280px; }
+  .ctl { margin-bottom:15px; }
+  .ctl label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  .ctl .val { float:right; color:var(--ink); font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:#c9923f; }
+  select,button{ background:#231708; color:var(--ink); border:1px solid #3a2a16; border-radius:8px;
+    padding:8px 12px; font:inherit; cursor:pointer; width:100%; margin-top:6px; }
+  button:hover,select:hover{ border-color:#c9923f; }
+</style>
+</head>
+<body>
+  <h1>DC Green Map — interactive</h1>
+  <p class="sub">Real tile shapes transplanted from Ellen Harvey's SFO "Green Map" (green shards for parks, silver/grey tesserae elsewhere), masked to DC. Everything below adjusts live — grout, brightness, the river shimmer, and the per-tile tonal scatter.</p>
+  <div class="wrap">
+    <div class="stage"><canvas id="cv"></canvas></div>
+    <div class="side">
+      <div class="ctl"><label>Grout width <span class="val" id="gV"></span></label>
+        <input type="range" id="grout" min="0" max="5" step="0.5" value="1.5"></div>
+      <div class="ctl"><label>Overall brightness <span class="val" id="bV"></span></label>
+        <input type="range" id="bright" min="0.6" max="1.4" step="0.02" value="1"></div>
+      <div class="ctl"><label>Water shimmer (river brightness) <span class="val" id="wV"></span></label>
+        <input type="range" id="water" min="0.8" max="1.8" step="0.02" value="1.2"></div>
+      <div class="ctl"><label>Tile-to-tile tonal scatter <span class="val" id="sV"></span></label>
+        <input type="range" id="shimmer" min="0" max="0.4" step="0.02" value="0.18"></div>
+      <div class="ctl"><label>Grout colour</label>
+        <select id="groutcol">
+          <option value="warm">Warm grey (real, ≈0.34)</option>
+          <option value="dark">Dark (stained-glass look)</option>
+        </select></div>
+      <button id="reseed">↻ Reshuffle tonal scatter</button>
+      <button id="dl">⭳ Download PNG</button>
+    </div>
+  </div>
+
+<script src="dc_tiles.js"></script>
+<script>
+const D = window.DC_TILES;
+const W = D.W || D.S, H = D.H || D.S;
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+cv.width = W; cv.height = H;
+const GW = [0.34,0.35,0.29], DK = [0.10,0.08,0.06], WALL = D.wall;
+// per-tile shimmer factor, reseedable
+let jitter = D.tiles.map(()=>Math.random());
+function reseed(){ jitter = D.tiles.map(()=>Math.random()); draw(); }
+
+function rgb(c){ return `rgb(${c.map(v=>Math.max(0,Math.min(255,Math.round(v*255)))).join(",")})`; }
+
+function draw(){
+  const grout = +document.getElementById("grout").value;
+  const B = +document.getElementById("bright").value;
+  const W = +document.getElementById("water").value;
+  const sh = +document.getElementById("shimmer").value;
+  const gcol = document.getElementById("groutcol").value === "warm" ? GW : DK;
+  document.getElementById("gV").textContent = grout + "px";
+  document.getElementById("bV").textContent = B.toFixed(2);
+  document.getElementById("wV").textContent = W.toFixed(2);
+  document.getElementById("sV").textContent = Math.round(sh*100) + "%";
+
+  ctx.fillStyle = rgb(WALL); ctx.fillRect(0,0,W,H);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = rgb(gcol);
+  ctx.lineWidth = grout;
+  for (let i=0;i<D.tiles.length;i++){
+    const t = D.tiles[i];
+    let f = B * (1 + sh*(jitter[i]-0.5));
+    if (t.r === 3) f *= W;                       // water shimmer
+    const c = t.c.map(v=>v*f);
+    ctx.beginPath();
+    const p = t.p;
+    ctx.moveTo(p[0][0], p[0][1]);
+    for (let k=1;k<p.length;k++) ctx.lineTo(p[k][0], p[k][1]);
+    ctx.closePath();
+    ctx.fillStyle = rgb(c);
+    ctx.fill();
+    if (grout > 0) ctx.stroke();
+  }
+}
+["grout","bright","water","shimmer","groutcol"].forEach(id=>
+  document.getElementById(id).addEventListener("input", draw));
+document.getElementById("reseed").addEventListener("click", reseed);
+document.getElementById("dl").addEventListener("click", ()=>{
+  const a = document.createElement("a");
+  a.href = cv.toDataURL("image/png"); a.download = "dc-green-map.png"; a.click();
+});
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
+output/_*.png
+tile_shapes.json

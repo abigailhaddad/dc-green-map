@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosaic technique gallery</title>
+<style>
+  :root { --grout:#181009; --ink:#e9e2d4; --muted:#a99f8b; }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:#0e0a06; color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:28px;
+  }
+  h1 { font-size:22px; margin:0 0 4px; font-weight:600; }
+  .sub { color:var(--muted); margin:0 0 20px; max-width:760px; }
+  .controls {
+    display:flex; flex-wrap:wrap; gap:18px 26px; align-items:center;
+    background:#171009; border:1px solid #2a1f12; border-radius:12px;
+    padding:14px 18px; margin-bottom:24px;
+  }
+  .ctl { display:flex; flex-direction:column; gap:4px; }
+  .ctl label { font-size:12px; color:var(--muted); letter-spacing:.03em; }
+  .ctl .val { color:var(--ink); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:150px; accent-color:#c9923f; }
+  select, button {
+    background:#231708; color:var(--ink); border:1px solid #3a2a16;
+    border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer;
+  }
+  button:hover, select:hover { border-color:#c9923f; }
+  .grid {
+    display:grid; gap:22px;
+    grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  }
+  .panel { background:#140d07; border:1px solid #271c10; border-radius:12px; padding:14px; }
+  .panel canvas { width:100%; height:auto; border-radius:8px; display:block; background:var(--grout); }
+  .panel h3 { margin:12px 2px 2px; font-size:15px; }
+  .panel p { margin:2px 2px 0; font-size:12.5px; color:var(--muted); }
+  .t { font-size:11px; color:#7a715f; margin-left:6px; }
+</style>
+</head>
+<body>
+  <h1>Mosaic technique gallery</h1>
+  <p class="sub">Six procedural tilings rendered from the same random seed. Watch how relaxation evens out cell sizes, how grout width changes the whole feel, and how a flow field turns random pieces into curving, hand-laid rows (<em>andamento</em>).</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <label>Tiles <span class="val" id="tilesV"></span></label>
+      <input type="range" id="tiles" min="40" max="600" value="220" step="10">
+    </div>
+    <div class="ctl">
+      <label>Grout width <span class="val" id="groutV"></span></label>
+      <input type="range" id="grout" min="0" max="6" value="2" step="1">
+    </div>
+    <div class="ctl">
+      <label>Irregularity <span class="val" id="jitV"></span></label>
+      <input type="range" id="jit" min="0" max="100" value="60" step="5">
+    </div>
+    <div class="ctl">
+      <label>Palette</label>
+      <select id="palette">
+        <option value="byzantine">Byzantine gold</option>
+        <option value="seaglass">Sea glass</option>
+        <option value="terracotta">Terracotta earth</option>
+        <option value="lapis">Lapis &amp; pearl</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label>&nbsp;</label>
+      <button id="reseed">↻ Randomize seed</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+<script>
+const SIZE = 360;            // internal canvas resolution
+const PALETTES = {
+  byzantine: [[44,70,52],[40,80,62],[15,55,42],[210,35,30],[35,25,82]],
+  seaglass:  [[172,38,55],[160,30,68],[195,32,45],[140,22,60],[45,18,78]],
+  terracotta:[[18,55,48],[26,60,58],[10,45,38],[35,30,70],[200,15,40]],
+  lapis:     [[218,55,38],[222,60,50],[205,45,55],[40,65,60],[30,15,82]],
+};
+
+let rngState = 1234567;
+function srand(s){ rngState = s >>> 0; }
+function rnd(){ // mulberry32
+  rngState |= 0; rngState = (rngState + 0x6D2B79F5) | 0;
+  let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function hashLight(id){ // deterministic per-cell lightness jitter
+  let h = Math.sin(id * 12.9898) * 43758.5453; return (h - Math.floor(h));
+}
+
+// ---- shared helpers -------------------------------------------------
+function colorField(x, y){               // low-freq region field 0..1
+  const v = 0.5 + 0.5*Math.sin(x*0.011 + Math.cos(y*0.009)*2.2 + Math.sin(x*0.004)*1.5);
+  return v;
+}
+function cellColor(x, y, pal, id, hueShift){
+  const band = pal[Math.min(pal.length-1, Math.floor(colorField(x,y)*pal.length))];
+  const lj = (hashLight(id) - 0.5) * 16;              // tonal variation within a region
+  const h = (band[0] + (hueShift||0) + 360) % 360;
+  return `hsl(${h} ${band[1]}% ${Math.max(8,Math.min(92,band[2]+lj))}%)`;
+}
+
+// jittered grid seeds: roughly even spacing + controllable jitter
+function jitteredSeeds(n, jit){
+  const cols = Math.max(1, Math.round(Math.sqrt(n * SIZE / SIZE)));
+  const sp = SIZE / Math.sqrt(n);
+  const seeds = [];
+  for (let y = sp/2; y < SIZE; y += sp)
+    for (let x = sp/2; x < SIZE; x += sp){
+      seeds.push({ x: x + (rnd()-0.5)*sp*jit, y: y + (rnd()-0.5)*sp*jit });
+    }
+  return seeds;
+}
+function randomSeeds(n){
+  const seeds = [];
+  for (let i=0;i<n;i++) seeds.push({ x: rnd()*SIZE, y: rnd()*SIZE });
+  return seeds;
+}
+
+// pixel nearest-seed assignment (Euclidean), returns Int32Array of ids
+function assign(seeds){
+  const id = new Int32Array(SIZE*SIZE);
+  for (let y=0;y<SIZE;y++){
+    for (let x=0;x<SIZE;x++){
+      let best=0, bd=Infinity;
+      for (let s=0;s<seeds.length;s++){
+        const dx=x-seeds[s].x, dy=y-seeds[s].y, d=dx*dx+dy*dy;
+        if (d<bd){ bd=d; best=s; }
+      }
+      id[y*SIZE+x]=best;
+    }
+  }
+  return id;
+}
+// anisotropic assignment: each seed elongated along its local flow angle
+function assignAniso(seeds, angleFn, elong){
+  const cos=[], sin=[];
+  for (const s of seeds){ const a=angleFn(s.x,s.y); cos.push(Math.cos(a)); sin.push(Math.sin(a)); }
+  const id = new Int32Array(SIZE*SIZE);
+  for (let y=0;y<SIZE;y++){
+    for (let x=0;x<SIZE;x++){
+      let best=0, bd=Infinity;
+      for (let s=0;s<seeds.length;s++){
+        const dx=x-seeds[s].x, dy=y-seeds[s].y;
+        const u = dx*cos[s] + dy*sin[s];     // along flow
+        const v = -dx*sin[s] + dy*cos[s];    // across flow
+        const d = (u*u)/(elong*elong) + v*v; // stretched: cheap to travel along flow
+        if (d<bd){ bd=d; best=s; }
+      }
+      id[y*SIZE+x]=best;
+    }
+  }
+  return id;
+}
+// Lloyd relaxation: move each seed to the centroid of its cell
+function lloyd(seeds, iters){
+  for (let it=0; it<iters; it++){
+    const id = assign(seeds);
+    const sx=new Float64Array(seeds.length), sy=new Float64Array(seeds.length), c=new Float64Array(seeds.length);
+    for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++){
+      const i=id[y*SIZE+x]; sx[i]+=x; sy[i]+=y; c[i]++;
+    }
+    for (let s=0;s<seeds.length;s++) if (c[s]>0){ seeds[s].x=sx[s]/c[s]; seeds[s].y=sy[s]/c[s]; }
+  }
+  return seeds;
+}
+
+// render an id-map into a canvas with dark grout between differing cells
+function paintCells(ctx, id, seeds, pal, grout){
+  const img = ctx.createImageData(SIZE, SIZE);
+  const d = img.data;
+  const colors = seeds.map((s,i)=>parseHsl(cellColor(s.x,s.y,pal,i)));
+  for (let y=0;y<SIZE;y++){
+    for (let x=0;x<SIZE;x++){
+      const i = y*SIZE+x;
+      const me = id[i];
+      let g = false;
+      if (grout>0){
+        for (let k=1;k<=grout && !g;k++){
+          if (x-k>=0   && id[i-k]!==me) g=true;
+          else if (x+k<SIZE && id[i+k]!==me) g=true;
+          else if (y-k>=0   && id[i-k*SIZE]!==me) g=true;
+          else if (y+k<SIZE && id[i+k*SIZE]!==me) g=true;
+        }
+      }
+      const o=i*4;
+      if (g){ d[o]=24; d[o+1]=16; d[o+2]=9; d[o+3]=255; }
+      else { const c=colors[me]; d[o]=c[0]; d[o+1]=c[1]; d[o+2]=c[2]; d[o+3]=255; }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function parseHsl(str){
+  const m = str.match(/hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%\)/);
+  return hslToRgb(+m[1]/360, +m[2]/100, +m[3]/100);
+}
+function hslToRgb(h,s,l){
+  let r,g,b;
+  if (s===0){ r=g=b=l; }
+  else {
+    const q = l<0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+    const hk=h;
+    const t=(n)=>{ let x=hk+n; if(x<0)x+=1; if(x>1)x-=1;
+      if(x<1/6) return p+(q-p)*6*x; if(x<1/2) return q;
+      if(x<2/3) return p+(q-p)*(2/3-x)*6; return p; };
+    r=t(1/3); g=t(0); b=t(-1/3);
+  }
+  return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+}
+
+// ---- Delaunay (Bowyer–Watson) for triangular tiles ------------------
+function delaunay(pts){
+  const big = SIZE*10;
+  const st = [ {x:-big,y:-big,id:-1}, {x:big*2,y:-big,id:-2}, {x:-big,y:big*2,id:-3} ];
+  let tris = [ {a:st[0],b:st[1],c:st[2]} ];
+  function inCirc(p,a,b,c){
+    const ax=a.x-p.x, ay=a.y-p.y, bx=b.x-p.x, by=b.y-p.y, cx=c.x-p.x, cy=c.y-p.y;
+    const d=(ax*ax+ay*ay)*(bx*cy-cx*by)-(bx*bx+by*by)*(ax*cy-cx*ay)+(cx*cx+cy*cy)*(ax*by-bx*ay);
+    const o=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+    return o>0 ? d>0 : d<0;
+  }
+  for (const p of pts){
+    const bad=[];
+    for (const t of tris) if (inCirc(p,t.a,t.b,t.c)) bad.push(t);
+    const edges=[];
+    for (const t of bad){
+      for (const e of [[t.a,t.b],[t.b,t.c],[t.c,t.a]]){
+        let shared=false;
+        for (const t2 of bad){ if (t2===t) continue;
+          for (const e2 of [[t2.a,t2.b],[t2.b,t2.c],[t2.c,t2.a]])
+            if ((e[0]===e2[0]&&e[1]===e2[1])||(e[0]===e2[1]&&e[1]===e2[0])){ shared=true; break; }
+          if (shared) break;
+        }
+        if (!shared) edges.push(e);
+      }
+    }
+    tris = tris.filter(t=>!bad.includes(t));
+    for (const e of edges) tris.push({a:e[0], b:e[1], c:p});
+  }
+  return tris.filter(t=>t.a.id>=0 && t.b.id>=0 && t.c.id>=0);
+}
+function paintTriangles(ctx, pts, pal, grout){
+  ctx.fillStyle = '#181009'; ctx.fillRect(0,0,SIZE,SIZE);
+  const tris = delaunay(pts);
+  for (const t of tris){
+    const cx=(t.a.x+t.b.x+t.c.x)/3, cy=(t.a.y+t.b.y+t.c.y)/3;
+    ctx.fillStyle = cellColor(cx, cy, pal, (cx*7+cy)|0);
+    ctx.beginPath();
+    for (const v of [t.a,t.b,t.c]){
+      const len=Math.hypot(v.x-cx,v.y-cy)||1;
+      const ix=v.x-(v.x-cx)/len*grout, iy=v.y-(v.y-cy)/len*grout;
+      if (v===t.a) ctx.moveTo(ix,iy); else ctx.lineTo(ix,iy);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+// ---- recursive subdivision (crazy paving) ---------------------------
+function paintSubdiv(ctx, target, jit, pal, grout){
+  ctx.fillStyle = '#181009'; ctx.fillRect(0,0,SIZE,SIZE);
+  const targetArea = SIZE*SIZE/target;
+  const minSide = Math.sqrt(targetArea)*0.7;
+  const out=[];
+  (function split(x,y,w,h,depth){
+    const stop = (w*h < targetArea*(0.6+rnd()*0.9)) || depth>12;
+    const canSplit = (w>minSide || h>minSide);
+    if (stop || !canSplit){ out.push({x,y,w,h}); return; }
+    const horiz = (w > h) ? true : (h > w ? false : rnd()<0.5);
+    const f = 0.5 + (rnd()-0.5)*jit;          // jittered split position
+    if (horiz){ const cut=w*f; split(x,y,cut,h,depth+1); split(x+cut,y,w-cut,h,depth+1); }
+    else      { const cut=h*f; split(x,y,w,cut,depth+1); split(x,y+cut,w,h-cut,depth+1); }
+  })(0,0,SIZE,SIZE,0);
+  for (const r of out){
+    ctx.fillStyle = cellColor(r.x+r.w/2, r.y+r.h/2, pal, (r.x*13+r.y)|0);
+    ctx.fillRect(r.x+grout, r.y+grout, Math.max(0,r.w-grout*2), Math.max(0,r.h-grout*2));
+  }
+}
+
+// ---- composite: zones, each a different palette + algorithm ---------
+// Large organic zones (relaxed Voronoi). Within each zone the tiles are laid
+// by a distinct technique and tinted with the zone's own hue, so the piece
+// reads as several "fields" the way figure-and-ground mosaics do.
+function paintComposite(ctx, st){
+  const K = 3;
+  const zoneSeeds = lloyd(jitteredSeeds(K*1.2, 0.6), 6).slice(0, K);
+  const zoneId = assign(zoneSeeds);                 // which big zone each pixel is in
+
+  // zone centroids (for flow orientation)
+  const zcx=new Float64Array(K), zcy=new Float64Array(K), zc=new Float64Array(K);
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++){ const z=zoneId[y*SIZE+x]; if(z<K){ zcx[z]+=x; zcy[z]+=y; zc[z]++; } }
+  for (let z=0;z<K;z++){ if(zc[z]){ zcx[z]/=zc[z]; zcy[z]/=zc[z]; } }
+
+  const TECHS = ['flow','relaxed','jitter'];         // one per zone
+  const HUES  = [0, 95, 200];                        // distinct color families
+  const base = jitteredSeeds(st.n, st.jit);
+
+  // build per-zone seed lists with global ids
+  const zones = [];
+  let gid = 0;
+  for (let z=0; z<K; z++){
+    const tech = TECHS[z % TECHS.length];
+    let seeds;
+    if (tech === 'flow'){
+      seeds = ringSeedsAround(zcx[z], zcy[z], st.n, st.jit).filter(s=>zoneAt(zoneId,s)===z);
+    } else {
+      seeds = base.filter(s=>zoneAt(zoneId,s)===z).map(s=>({x:s.x,y:s.y}));
+      if (tech === 'relaxed') seeds = lloydMasked(seeds, zoneId, z, 3);
+    }
+    if (seeds.length===0) seeds=[{x:zcx[z]||SIZE/2, y:zcy[z]||SIZE/2}];
+    const cos=[], sin=[];
+    for (const s of seeds){ const a=Math.atan2(s.y-zcy[z], s.x-zcx[z])+Math.PI/2; cos.push(Math.cos(a)); sin.push(Math.sin(a)); }
+    zones.push({ tech, hue:HUES[z%HUES.length], seeds, cos, sin, base:gid });
+    gid += seeds.length;
+  }
+
+  // assign every pixel to the nearest seed *within its own zone*
+  const tile = new Int32Array(SIZE*SIZE);
+  for (let y=0;y<SIZE;y++){
+    for (let x=0;x<SIZE;x++){
+      const i=y*SIZE+x; const z=zoneId[i]; const Z=zones[z];
+      let best=0, bd=Infinity;
+      for (let s=0;s<Z.seeds.length;s++){
+        const dx=x-Z.seeds[s].x, dy=y-Z.seeds[s].y;
+        let d;
+        if (Z.tech==='flow'){ const u=dx*Z.cos[s]+dy*Z.sin[s], v=-dx*Z.sin[s]+dy*Z.cos[s]; d=(u*u)/3.6+v*v; }
+        else d=dx*dx+dy*dy;
+        if (d<bd){ bd=d; best=s; }
+      }
+      tile[i]=Z.base+best;
+    }
+  }
+
+  // paint with grout at tile *and* zone boundaries
+  const img=ctx.createImageData(SIZE,SIZE), d=img.data;
+  const colorCache=new Map();
+  for (let y=0;y<SIZE;y++){
+    for (let x=0;x<SIZE;x++){
+      const i=y*SIZE+x, me=tile[i], o=i*4;
+      let g=false;
+      for (let k=1;k<=st.grout && !g;k++){
+        if (x-k>=0   && tile[i-k]!==me) g=true;
+        else if (x+k<SIZE && tile[i+k]!==me) g=true;
+        else if (y-k>=0   && tile[i-k*SIZE]!==me) g=true;
+        else if (y+k<SIZE && tile[i+k*SIZE]!==me) g=true;
+      }
+      if (g){ d[o]=24; d[o+1]=16; d[o+2]=9; d[o+3]=255; continue; }
+      let c=colorCache.get(me);
+      if (!c){ const z=zoneId[i], Z=zones[z], s=me-Z.base;
+        c=parseHsl(cellColor(Z.seeds[s].x, Z.seeds[s].y, st.pal, me, Z.hue)); colorCache.set(me,c); }
+      d[o]=c[0]; d[o+1]=c[1]; d[o+2]=c[2]; d[o+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+}
+function zoneAt(zoneId, s){ const x=Math.max(0,Math.min(SIZE-1,s.x|0)), y=Math.max(0,Math.min(SIZE-1,s.y|0)); return zoneId[y*SIZE+x]; }
+function ringSeedsAround(cx, cy, n, jit){
+  const seeds=[]; const sp=SIZE/Math.sqrt(n)*0.95;
+  for (let r=sp*0.5; r<SIZE*0.8; r+=sp){
+    const count=Math.max(1,Math.round(2*Math.PI*r/sp)); const off=rnd()*Math.PI*2;
+    for (let k=0;k<count;k++){ const a=off+k/count*Math.PI*2;
+      seeds.push({x:cx+Math.cos(a)*r+(rnd()-0.5)*sp*jit, y:cy+Math.sin(a)*r+(rnd()-0.5)*sp*jit}); }
+  }
+  seeds.push({x:cx,y:cy}); return seeds;
+}
+function lloydMasked(seeds, zoneId, z, iters){      // relax, but keep seeds inside the zone
+  for (let it=0; it<iters; it++){
+    const sx=new Float64Array(seeds.length), sy=new Float64Array(seeds.length), c=new Float64Array(seeds.length);
+    for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++){
+      if (zoneId[y*SIZE+x]!==z) continue;
+      let best=0,bd=Infinity;
+      for (let s=0;s<seeds.length;s++){ const dx=x-seeds[s].x,dy=y-seeds[s].y,dd=dx*dx+dy*dy; if(dd<bd){bd=dd;best=s;} }
+      sx[best]+=x; sy[best]+=y; c[best]++;
+    }
+    for (let s=0;s<seeds.length;s++) if(c[s]>0){ seeds[s].x=sx[s]/c[s]; seeds[s].y=sy[s]/c[s]; }
+  }
+  return seeds;
+}
+
+// ---- panel definitions ---------------------------------------------
+// Each panel regenerates its seeds deterministically (per-panel seed) every render.
+function makePanels(){
+  return [
+    {
+      title:'1 · Pure-random Voronoi', tag:'baseline',
+      note:'Uniformly random seeds. Real "pieces," but sizes vary wildly — reads as shattered glass more than a laid mosaic.',
+      render(ctx, st){
+        const seeds = randomSeeds(st.n);
+        paintCells(ctx, assign(seeds), seeds, st.pal, st.grout);
+      }
+    },
+    {
+      title:'2 · Jittered-grid Voronoi', tag:'bounded irregularity',
+      note:'Seeds start on a grid, then jitter. Sizes stay comparable while shapes stay irregular — the bounded-randomness sweet spot.',
+      render(ctx, st){
+        const seeds = jitteredSeeds(st.n, st.jit);
+        paintCells(ctx, assign(seeds), seeds, st.pal, st.grout);
+      }
+    },
+    {
+      title:'3 · Lloyd-relaxed Voronoi', tag:'⭐ the classic',
+      note:'Same seeds, then 4 rounds of Lloyd relaxation (centroidal Voronoi). Cells even out into clean, cut-looking tesserae.',
+      render(ctx, st){
+        const seeds = lloyd(jitteredSeeds(st.n, st.jit), 4);
+        paintCells(ctx, assign(seeds), seeds, st.pal, st.grout);
+      }
+    },
+    {
+      title:'4 · Flow-field Voronoi', tag:'andamento',
+      note:'Seeds on concentric rings, each tile stretched along the local flow. Pieces line up into curving rows — the hallmark of hand-laid Roman/Byzantine work.',
+      render(ctx, st){
+        const seeds = ringSeeds(st.n, st.jit);
+        const cx=SIZE/2, cy=SIZE/2;
+        const angleFn=(x,y)=>Math.atan2(y-cy, x-cx)+Math.PI/2; // tangential swirl
+        paintCells(ctx, assignAniso(seeds, angleFn, 1.9), seeds, st.pal, st.grout);
+      }
+    },
+    {
+      title:'5 · Delaunay triangles', tag:'stained-glass',
+      note:'Triangulate the same jittered points instead of taking Voronoi cells. Sharper, faceted, gem-like — the opposite aesthetic from rounded tesserae.',
+      render(ctx, st){
+        const pts = jitteredSeeds(st.n, st.jit).map((s,i)=>({x:s.x,y:s.y,id:i}));
+        paintTriangles(ctx, pts, st.pal, Math.max(1,st.grout));
+      }
+    },
+    {
+      title:'6 · Recursive subdivision', tag:'crazy paving',
+      note:'Binary space partition with jittered cuts. Rectangular shards of varied size — the broken-tile / pique-assiette look.',
+      render(ctx, st){
+        paintSubdiv(ctx, st.n, st.jit, st.pal, Math.max(1,st.grout));
+      }
+    },
+    {
+      title:'7 · Mixed-region composite', tag:'★ multi-algorithm',
+      note:'The canvas is split into three organic zones; each gets its own hue family AND its own technique (flow, relaxed, jittered). Grout runs along the zone seams too, so the fields read as separate passages — like figure-and-ground in real mosaic.',
+      render(ctx, st){ paintComposite(ctx, st); }
+    },
+  ];
+}
+
+function ringSeeds(n, jit){
+  const seeds=[]; const cx=SIZE/2, cy=SIZE/2;
+  const sp = SIZE/Math.sqrt(n)*0.95;
+  for (let r=sp*0.5; r<SIZE*0.72; r+=sp){
+    const count = Math.max(1, Math.round(2*Math.PI*r/sp));
+    const off = rnd()*Math.PI*2;
+    for (let k=0;k<count;k++){
+      const a = off + k/count*Math.PI*2;
+      seeds.push({ x: cx + Math.cos(a)*r + (rnd()-0.5)*sp*jit,
+                   y: cy + Math.sin(a)*r + (rnd()-0.5)*sp*jit });
+    }
+  }
+  seeds.push({x:cx+(rnd()-0.5)*sp,y:cy+(rnd()-0.5)*sp});
+  return seeds;
+}
+
+// ---- wiring ---------------------------------------------------------
+const grid = document.getElementById('grid');
+const panels = makePanels();
+const canvases = panels.map(p=>{
+  const wrap=document.createElement('div'); wrap.className='panel';
+  const cv=document.createElement('canvas'); cv.width=SIZE; cv.height=SIZE;
+  const h=document.createElement('h3'); h.innerHTML=p.title+`<span class="t">${p.tag}</span>`;
+  const note=document.createElement('p'); note.textContent=p.note;
+  wrap.append(cv,h,note); grid.append(wrap);
+  return cv.getContext('2d');
+});
+
+let baseSeed = 1234567;
+function readUI(){
+  return {
+    n: +document.getElementById('tiles').value,
+    grout: +document.getElementById('grout').value,
+    jit: +document.getElementById('jit').value/100,
+    pal: PALETTES[document.getElementById('palette').value],
+  };
+}
+function render(){
+  const st = readUI();
+  document.getElementById('tilesV').textContent = st.n;
+  document.getElementById('groutV').textContent = st.grout;
+  document.getElementById('jitV').textContent = Math.round(st.jit*100)+'%';
+  panels.forEach((p,i)=>{ srand(baseSeed + i*7919); p.render(canvases[i], st); });
+}
+
+['tiles','grout','jit','palette'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', render);
+});
+document.getElementById('reseed').addEventListener('click', ()=>{
+  baseSeed = (baseSeed*1103515245 + 12345) & 0x7fffffff; render();
+});
+render();
+</script>
+</body>
+</html>
