@@ -1,24 +1,27 @@
 # Green Map — Washington, DC
 
-A procedurally generated mosaic "Green Map" of Washington, DC, in the spirit of **Ellen
-Harvey's _Green Map_ (2019)** in the lobby of the Grand Hyatt at SFO. Harvey's piece inverts
-the usual map: water becomes a shimmering field, parks are jewels, developed land recedes,
-and a small gold disc marks "you are here."
+A procedurally generated mosaic "Green Map" of Washington, DC, **inspired by Ellen Harvey's
+_Green Map_ (2019)** in the lobby of the Grand Hyatt at SFO. Harvey's piece inverts the usual
+map (water becomes a shimmering field, parks are jewels, developed land recedes, a gold disc
+marks "you are here") — but the specific thing this project takes from it is one principle:
 
-This repo builds the DC version the same way Harvey's reads — three distinct families of
-hand-cut-looking tiles — but every visual property (tile shapes, sizes, grout, colours) is
-**measured from a photo of the real SFO mosaic and matched numerically**, not eyeballed.
+> **different shape distributions for different colours** — each kind of region is rendered in
+> its own family of hand-cut-looking tiles, not just its own colour.
+
+This is an interpretation, not a reproduction. Two of the families are tuned to match shape
+metrics *measured* from a photo of the real SFO mosaic; the rest is our own:
 
 ![the map](output/dc_greenmap.png)
 
-- **grey land** — small rectangular tesserae
-- **green parks** — big interlocking glass shards (Rock Creek, the Mall, the Arboretum, …)
-- **blue water** — tiles elongated *along the river current* (Potomac & Anacostia)
-- **gold disc** — the Capitol, a single smooth object
+- **grey land** — small rectangular tesserae — *shape metrics matched to the SFO photo*
+- **green parks** — big interlocking glass shards — *shape metrics matched to the SFO photo*
+- **blue water** — tiles elongated *along the river current* — **genuinely new**: Harvey's
+  water is the silver shimmer field, not blue or flowing; this family is our own invention
+- **gold disc** — the Capitol locator (a nod to Harvey's gold dot)
 
-The District outline, the rivers, and the (major) green space are read from a real satellite
-image, so the shape is the true post-1846-retrocession DC (only the N and E corners of the
-original diamond survive; the Potomac is the western boundary).
+Colours are sampled per region from the SFO photo (then the water is recoloured blue — also a
+departure). The District outline, rivers, and major green space are read from a real DC
+satellite image, so the shape and geography are the real ones.
 
 ## Generate it
 
@@ -51,24 +54,27 @@ tools/       analysis & verification — how the numbers were derived/checked (s
 
 ## How it works (the method)
 
-The whole project is one idea: **don't guess what "mosaic-y" means — measure it from the
-real artwork, then generate to those numbers.**
+The interesting part is how the grey and green families were made: **rather than guessing what
+"hand-cut tesserae" or "interlocking shards" should look like, measure them from the real
+artwork and generate to those numbers.** (The water family is then designed by hand on top of
+the same principle — see the table.)
 
 1. **Segment** the real SFO photo into individual tiles (gradient-watershed; `tools/seg.py`).
 2. **Measure** each tile with a shared yardstick (`tools/metrics.py`): area, size-variation
    (`area_cv`), `solidity` (interlocking), `circularity`/right-angle corners (rectangularity),
    colour. These targets live in `tools/sfo_target_metrics.json`.
-3. **Generate** three tile families and tune each until its metrics match the real ones:
+3. **Generate** three tile families:
 
-| family | model (`src/dc_build.py`) | key matched metrics (real → gen) |
+| family | model (`src/dc_build.py`) | matched to SFO? (real → gen) |
 |---|---|---|
-| grey land | deformed quad grid + cluster-merge | right-angle corners 44% → 41%, area-cv 1.03 → 1.10 |
-| green parks | warped variable-density Voronoi + merge | solidity 0.79 → 0.73, area-cv 1.96 → 1.5 |
-| water | flow-elongated cells along the current | — |
-| green/grey size ratio | — | 1.14 → 1.15 |
+| grey land | deformed quad grid + cluster-merge | yes — right-angle corners 44% → 41%, area-cv 1.03 → 1.10 |
+| green parks | warped variable-density Voronoi + merge | yes — solidity 0.79 → 0.73, area-cv 1.96 → 1.5 |
+| green/grey size ratio | — | yes — 1.14 → 1.15 |
+| **water** | flow-elongated cells along the current | **no — our own, designed by hand** |
 
 4. **Grout** is rendered at the measured width (**8% of tile diameter**) in the measured
-   colour (**warm grey, not black**); colours are sampled per region from the real palettes.
+   colour (**warm grey, not black**). Land/park/grey colours are sampled per region from the
+   SFO palettes; the water is then recoloured a hand-picked blue (a departure from Harvey).
 
 Verify any time:
 
