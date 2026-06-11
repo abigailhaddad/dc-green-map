@@ -3,3 +3,8 @@ __pycache__/
 .DS_Store
 output/_*.png
 tile_shapes.json
+
+# generated fabrication artifacts (regenerate via src/render_height.py + tools/make_coaster_mesh.py)
+output/dc_greenmap_print.png
+output/dc_greenmap_height.png
+output/coaster/

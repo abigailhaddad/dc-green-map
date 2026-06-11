@@ -113,6 +113,26 @@ may point at the old layout). The story of these:
 Also in `web/`: `gallery.html` (a 7-technique mosaic explainer) and `sliders-demo.html` (an
 earlier live-tweak DC generator) — standalone, no build step.
 
+## Make a physical version
+
+You can turn the map into a tactile, raised object. Two scripts produce the assets (their
+outputs are git-ignored — regenerate any time):
+
+```bash
+python3 src/render_height.py 1600         # -> output/dc_greenmap_print.png (colour)
+                                          #    output/dc_greenmap_height.png (16-bit height:
+                                          #    white = raised tile, black = recessed grout)
+python3 tools/make_coaster_mesh.py 100 1.0 3.5   # -> output/coaster/  watertight full-colour
+                                                 #    relief mesh (.obj + .mtl + texture)
+```
+
+- **Textured UV / "elevated" flatbed print** (best for large, ~30 cm): send a print shop the
+  colour image + the height map (the grayscale *is* the elevation channel). Ask specifically
+  for *elevated/textured* UV (Canon Touchstone, Arizona PRISMAelevate, or Direct Color TEXTUR3D).
+- **Full-colour 3D print** (best for small, fully order-online): upload the coaster mesh to
+  craftcloud3d.com or i.materialise; pick a **full-colour** material (e.g. HP MJF Multicolor or
+  full-colour sandstone). On upload, set the model's units to **millimetres**.
+
 ## Credit
 
 Concept and the original mosaic: **Ellen Harvey, _Green Map_ (2019)**, Grand Hyatt at SFO,
