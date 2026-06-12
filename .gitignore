@@ -3,8 +3,14 @@ __pycache__/
 .DS_Store
 output/_*.png
 tile_shapes.json
+data/cache/
+output/gallery/
 
 # generated fabrication artifacts (regenerate via src/render_height.py + tools/make_coaster_mesh.py)
 output/dc_greenmap_print.png
 output/dc_greenmap_height.png
 output/coaster/
+output/site/
+
+# Local Netlify folder
+.netlify

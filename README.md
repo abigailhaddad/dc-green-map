@@ -1,137 +1,154 @@
-# Green Map — Washington, DC
+# US Mosaic Maps
 
-A procedurally generated mosaic "Green Map" of Washington, DC, **inspired by Ellen Harvey's
-_Green Map_ (2019)** in the lobby of the Grand Hyatt at SFO. Harvey's piece inverts the usual
-map (water becomes a shimmering field, parks are jewels, developed land recedes, a gold disc
-marks "you are here") — but the specific thing this project takes from it is one principle:
+Procedurally generated mosaic maps of **every US state and the country as a whole**, in the
+style of Ellen Harvey's _Green Map_ (2019) at the Grand Hyatt at SFO. Each region class —
+land, parks, water — is rendered in its own family of hand-cut-looking tiles, and you choose
+which shape family fills each one.
 
-> **different shape distributions for different colours** — each kind of region is rendered in
-> its own family of hand-cut-looking tiles, not just its own colour.
+> **🔗 Live site: [us-mosaic-map.netlify.app](https://us-mosaic-map.netlify.app)**
 
-This is an interpretation, not a reproduction. Two of the families are tuned to match shape
-metrics *measured* from a photo of the real SFO mosaic; the rest is our own:
+The site loads on a mosaic of the whole United States (Albers projection, Alaska & Hawaii as
+insets); **click any state** to drill into it, and pick a shape family for **land / parks /
+water** to re-tile the map live.
 
-![the map](output/dc_greenmap.png)
+![the families](output/family_swatches.png)
 
-- **grey land** — small rectangular tesserae — *shape metrics matched to the SFO photo*
-- **green parks** — big interlocking glass shards — *shape metrics matched to the SFO photo*
-- **blue water** — tiles elongated *along the river current* — **genuinely new**: Harvey's
-  water is the silver shimmer field, not blue or flowing; this family is our own invention
-- **gold disc** — the Capitol locator (a nod to Harvey's gold dot)
+It started as a single map of Washington, DC (see [Origins](#origins-the-dc-green-map) below) —
+the specific idea taken from Harvey's piece is one principle:
 
-Colours are sampled per region from the SFO photo (then the water is recoloured blue — also a
-departure). The District outline, rivers, and major green space are read from a real DC
-satellite image, so the shape and geography are the real ones.
+> **different shape distributions for different colours** — each kind of region gets its own
+> family of tiles, not just its own colour. Two families are tuned to shape metrics *measured*
+> from a photo of the real SFO mosaic; the rest are our own.
 
-## Generate it
+## Quick start
 
-Requires `python3` with `numpy`, `scipy`, `Pillow`, `contourpy` (and `matplotlib` for the
-analysis tools).
+Requires `python3` with `numpy`, `scipy`, `Pillow` (and `matplotlib` for the DC analysis tools).
+No other dependencies — all map data is fetched from public ArcGIS endpoints with the stdlib.
 
 ```bash
-./generate.sh                 # render the PNG + export the interactive viewer data
-# or individually:
-python3 src/render_map.py 1600        # -> output/dc_greenmap.png  (arg = height in px)
-python3 src/export_tiles.py           # -> web/dc_tiles.js  (for the viewer)
-open web/viewer.html                  # interactive: grout, brightness, water shimmer, colours
+# one state -> output/<state>_greenmap.png
+python3 src/make_state.py Maryland
+python3 src/make_state.py Michigan --water pebbles --green crackle --height 2000
+python3 src/make_state.py --list                  # the shape families
+
+# one state, every shape combo, as a browsable page
+python3 src/gallery.py Michigan                   # -> output/gallery/michigan/index.html
+
+# the whole interactive site: all 50 states + DC, then the national aggregate
+python3 src/build_site.py --all --format webp     # -> output/site/<state>/...
+python3 src/build_national.py --height 900         # -> adds the clickable "United States" map
+open output/site/index.html
 ```
+
+`make_state.py` flags: positional `state` (full name or 2-letter code), `--land/--green/--water`
+(any family), `--height` (default 1600), `--seed`, `--no-capital`, `--list`.
+
+## The shape families
+
+Every family is a hand-rolled generative *process* (no pattern book), built from standard
+primitives — jittered grids, Voronoi, distance transforms, noise fields, PCA. `python3
+src/families.py` writes the contact sheet above.
+
+| family | look | how it's made |
+|---|---|---|
+| `quads` | hand-cut rectangular tesserae | deformed quad lattice + cluster-merge *(SFO-calibrated)* |
+| `shards` | interlocking glass shards | warped variable-density Voronoi + merge *(SFO-calibrated)* |
+| `flow` | cells stretched along the current | anisotropic Voronoi oriented by the water's flow field |
+| `pebbles` | rounded stones in a fat grout bed | eroded + smoothed Voronoi, gaps become grout |
+| `strata` | slate slivers along a wandering grain | oriented anisotropic Chebyshev cells |
+| `crackle` | dried-mud shatter, heavy size tail | recursive PCA-axis jagged cuts (a fracture model) |
+| `rings` | wobbly growth rings hugging the edge | warped distance-transform bands, segmented |
+| `disc` | one smooth piece | the gold capital locator |
+
+Defaults: `land=quads`, `green=shards`, `water=flow`. `quads`/`shards` are tuned to the real
+SFO mosaic's measured corner-angle and size distributions; the rest are our own inventions.
+
+## Real geography, made legible
+
+The maps are accurate where it matters and stylized where it helps:
+
+- **Real boundaries.** State outlines, hydrography, and protected areas come from public data
+  (below), not from a satellite image. Each state uses its true outline and aspect ratio; the
+  national map uses an **Albers Equal-Area** projection (the USGS standard, so the country
+  isn't north-south stretched).
+- **Tiles auto-scale to the geography.** Tile size keys off each region's median width, so a
+  narrow river isn't rendered with the same coarse tiles as a wide bay.
+- **Grout is a constant fraction of each tile.** So a region reads the same "size" no matter
+  which shape family fills it — thin water keeps its colour instead of dissolving into grout.
+- **Honest tradeoffs.** At the chunky mosaic resolution, features smaller than ~1 tile (e.g.
+  many of Minnesota's small lakes) fall below the grid — the price of the tesserae aesthetic.
+
+### Data sources
+
+Fetched on demand with stdlib `urllib` and cached under `data/cache/` (git-ignored):
+
+- **State outlines & hydrography** — US Census **TIGERweb** (States, Areal Hydrography). The
+  outline is the *legal* boundary, so a state owns its water (the Chesapeake, the Great Lakes
+  halves); hydro polygons then carve the water back out.
+- **Parks** — USGS **PAD-US** Management Areas, filtered to park/forest/refuge designations.
+- **Capitals** — approximate city centers (gold locator disc).
 
 ## Repo layout
 
 ```
-data/        inputs (committed so it's reproducible)
-  dc_satellite.jpg   real DC satellite — source of the outline, rivers, green space
-  sfo_greenmap.jpg   close-up of Harvey's SFO mosaic — source of all the metrics & colours
+src/
+  state_data.py    fetch + cache + rasterize any state -> region map (land/parks/water/capital)
+  make_state.py    CLI: one state -> a PNG
+  families.py      the shape vocabulary (8 families) + composer + renderer
+  gallery.py       one state, all 343 family combos + an HTML browser
+  build_site.py    every state -> output/site/ + the multi-state index page
+  build_national.py  composite all states (Albers + AK/HI insets) -> the national map
+  dc_build.py      the original DC engine (metrics-calibrated; left untouched)
+  render_map.py / render_height.py / export_tiles.py   DC render + fabrication + viewer data
+data/
   color_model.json   per-region colour palettes sampled from the SFO photo
-src/         THE GENERATOR (what's used)
-  dc_build.py        engine: region map + 3 tile families + colour + shading
-  render_map.py      -> output/dc_greenmap.png
-  export_tiles.py    -> web/dc_tiles.js
-web/         viewer.html (interactive), dc_tiles.js, gallery.html, sliders-demo.html
-output/      dc_greenmap.png (the finished piece)
-tools/       analysis & verification — how the numbers were derived/checked (see below)
+  dc_satellite.jpg, sfo_greenmap.jpg   DC source image + the SFO mosaic photo (metrics)
+  cache/             fetched GeoJSON per state (git-ignored)
+output/
+  site/, gallery/    generated galleries (git-ignored)
+  *_greenmap.png     sample renders
+tools/               DC analysis & verification — how the shape metrics were derived
 ```
 
-## How it works (the method)
+## Origins: the DC Green Map
 
-The interesting part is how the grey and green families were made: **rather than guessing what
-"hand-cut tesserae" or "interlocking shards" should look like, measure them from the real
-artwork and generate to those numbers.** (The water family is then designed by hand on top of
-the same principle — see the table.)
+This began as a single procedural map of Washington, DC, reverse-engineering Harvey's mosaic.
+The interesting part was the grey and green families: **rather than guessing what "hand-cut
+tesserae" vs "interlocking shards" should look like, measure them from the real artwork and
+generate to those numbers.** What "less rectangular" means turned out to be a *distribution of
+corner angles* — not exact right angles, but many in the 80°–100° range.
 
-1. **Segment** the real SFO photo into individual tiles (gradient-watershed; `tools/seg.py`).
-2. **Measure** each tile with a shared yardstick (`tools/metrics.py`): area, size-variation
-   (`area_cv`), `solidity` (interlocking), `circularity`/right-angle corners (rectangularity),
-   colour. These targets live in `tools/sfo_target_metrics.json`.
-3. **Generate** three tile families:
+![DC](output/dc_greenmap.png)
 
 | family | model (`src/dc_build.py`) | matched to SFO? (real → gen) |
 |---|---|---|
 | grey land | deformed quad grid + cluster-merge | yes — right-angle corners 44% → 41%, area-cv 1.03 → 1.10 |
 | green parks | warped variable-density Voronoi + merge | yes — solidity 0.79 → 0.73, area-cv 1.96 → 1.5 |
-| green/grey size ratio | — | yes — 1.14 → 1.15 |
-| **water** | flow-elongated cells along the current | **no — our own, designed by hand** |
+| water | flow-elongated cells along the current | no — our own, designed by hand |
 
-4. **Grout** is rendered at the measured width (**8% of tile diameter**) in the measured
-   colour (**warm grey, not black**). Land/park/grey colours are sampled per region from the
-   SFO palettes; the water is then recoloured a hand-picked blue (a departure from Harvey).
-
-Verify any time:
+`dc_build.py` (and the DC render/fabrication/viewer scripts) are the original, left untouched;
+`families.py` contains generalized copies. The full method, verification scripts, and the
+experiments we learned from live in `tools/` (segmentation, per-tile metrics, parameter fits).
 
 ```bash
-python3 tools/compare_metrics.py     # generated vs real, per family
-python3 tools/rectangularity.py      # corner-angle distribution (the "squareness" metric)
-python3 tools/area_ratio.py          # green/grey area ratio
+python3 src/render_map.py 1600        # -> output/dc_greenmap.png
+python3 tools/compare_metrics.py      # generated vs real, per family
 ```
-
-## tools/ — analysis & the journey
-
-Kept, runnable (run from the repo root):
-
-- `seg.py` — mosaic segmentation (grout = gradient ridges, markers = flat tile interiors).
-- `metrics.py` — per-tile shape metrics; the shared yardstick.
-- `compare_metrics.py`, `rectangularity.py`, `area_ratio.py` — verify generated ≈ real.
-- `extract_shapes.py` — vectorise the real tiles into polygons (`tile_shapes.json`).
-- `color_model.py` — sample the real per-region palettes → `data/color_model.json`.
-  (Run `extract_shapes.py` first; it produces the `tile_shapes.json` this reads.)
-
-`tools/experiments/` — earlier approaches we built and learned from, kept as a record (paths
-may point at the old layout). The story of these:
-
-- **`generate.py` (Voronoi), `fracture.py`, `bricks.py`** — generative tile models. We learned
-  Voronoi *cannot* reproduce the green shards (too convex, too uniform), which forced the
-  fracture model. Bricks/flow-bricks explored rectangular backgrounds.
-- **`tune.py`, `tune_green.py`, `fit_all.py`** — parameter searches fitting those models to
-  the measured metrics.
-- **`segment_real.py`, `discriminate_green.py`, `characterize_shapes.py`** — measuring the real
-  tiles, finding which metrics actually separate the families, and a PCA shape model.
-- **`compare_visual.py`, `strategies.py`** — side-by-side bake-offs of tiling strategies
-  (transplanting real shapes vs generating them). The transplant route was the most faithful
-  but couldn't tile seamlessly, which led to the current generate-to-metrics approach.
-- **`grout.py`, `debug_seg.py`** — measuring grout width/colour and debugging segmentation.
-
-Also in `web/`: `gallery.html` (a 7-technique mosaic explainer) and `sliders-demo.html` (an
-earlier live-tweak DC generator) — standalone, no build step.
 
 ## Make a physical version
 
-You can turn the map into a tactile, raised object. Two scripts produce the assets (their
-outputs are git-ignored — regenerate any time):
+Turn a map into a tactile, raised object (outputs git-ignored — regenerate any time):
 
 ```bash
-python3 src/render_height.py 1600         # -> output/dc_greenmap_print.png (colour)
-                                          #    output/dc_greenmap_height.png (16-bit height:
-                                          #    white = raised tile, black = recessed grout)
-python3 tools/make_coaster_mesh.py 100 1.0 3.5   # -> output/coaster/  watertight full-colour
-                                                 #    relief mesh (.obj + .mtl + texture)
+python3 src/render_height.py 1600         # -> colour print + 16-bit height map
+python3 tools/make_coaster_mesh.py 100 1.0 3.5   # -> watertight full-colour relief mesh
 ```
 
-- **Textured UV / "elevated" flatbed print** (best for large, ~30 cm): send a print shop the
-  colour image + the height map (the grayscale *is* the elevation channel). Ask specifically
-  for *elevated/textured* UV (Canon Touchstone, Arizona PRISMAelevate, or Direct Color TEXTUR3D).
-- **Full-colour 3D print** (best for small, fully order-online): upload the coaster mesh to
-  craftcloud3d.com or i.materialise; pick a **full-colour** material (e.g. HP MJF Multicolor or
-  full-colour sandstone). On upload, set the model's units to **millimetres**.
+- **Textured UV / "elevated" flatbed print** (best for large, ~30 cm): send a shop the colour
+  image + the height map; ask for *elevated/textured* UV (Canon Touchstone, Arizona
+  PRISMAelevate, Direct Color TEXTUR3D).
+- **Full-colour 3D print** (best small): upload the coaster mesh to craftcloud3d.com or
+  i.materialise; pick a full-colour material; set units to **millimetres**.
 
 ## Credit
 

@@ -1,0 +1,40 @@
+# Editable text for the site (loaded by src/build_site.py -> rendered into output/site/index.html).
+# After editing, run:  python3 -c "import sys; sys.path.insert(0,'src'); from build_site import write_index; from pathlib import Path; write_index(Path('output/site'),'webp')"
+# Values may contain inline HTML (<em>italics</em>, &amp; for a literal &, real — em-dashes are fine).
+# In `story`, a blank line starts a new paragraph. Keep every line indented two spaces.
+
+title: "The United States, in tile"
+
+# Author / links shown prominently in the header
+author: "Abigail Haddad"
+blog_name: "Present of Coding"
+blog_url: "https://presentofcoding.substack.com/"
+repo_url: "https://github.com/abigailhaddad/dc-green-map"
+
+intro: >
+  Every state's real geography — its coastline, rivers, parks, and capital — rebuilt as a
+  mosaic. Each region class is filled by a generative <em>shape family</em>; pick one for
+  land, parks, and water and watch the map re-tile. Inspired by Ellen Harvey's
+  <em>Green Map</em> (2019) at the Grand Hyatt hotel at SFO.
+
+sub: "Pick a state (or the whole country) and a shape family for each class."
+
+story: >
+  Background: I saw Ellen Harvey's mosaic <em>Green Map</em> in San Francisco. It is so
+  beautiful that I could not stop looking at it. One of the things that made it so compelling
+  was that each color of tile was drawn from a different distribution of shapes: the gray land
+  tiles were far more rectangular than the green ones, and the green ones had more large tiles.
+  I wanted to see if I could make something like that for DC, and then it expanded into the
+  rest of the United States.
+
+
+  Each kind of tile comes from a <em>generative process</em>: a small algorithm that carves a
+  region into tiles, rather than stamping down shapes from a library. They all fill the same
+  region, but they look very different from one another — partly from the shapes of the tiles,
+  and partly from the grout, the lines in between them. The lines stay about the same width;
+  what changes is the ratio — smaller tiles pack more lines into the same space, so you see
+  more grout and less color. A couple of the families are reverse-engineered from Harvey's
+  piece — I measured the real tiles (their corner angles, sizes, and how interlocking they
+  are) and tuned a generator to match — and the rest were made by
+  <a href="https://www.anthropic.com/claude/fable" target="_blank" rel="noopener">Fable</a>.
+  You choose which process fills each kind of region: land, parks, and water.
