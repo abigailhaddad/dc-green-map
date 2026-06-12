@@ -71,8 +71,13 @@ The maps are accurate where it matters and stylized where it helps:
   (below), not from a satellite image. Each state uses its true outline and aspect ratio; the
   national map uses an **Albers Equal-Area** projection (the USGS standard, so the country
   isn't north-south stretched).
-- **Tiles auto-scale to the geography.** Tile size keys off each region's median width, so a
-  narrow river isn't rendered with the same coarse tiles as a wide bay.
+- **Tiles auto-scale per region.** Each region class gets its own tile size: a distance
+  transform of the region's mask gives its median half-width, and the base is
+  `clip(1.5 × half-width, 4.5px, land-base)`. Thin rivers get fine tiles, broad forests coarse
+  ones; land stays fixed. So the *same* family looks different from one region to the next
+  (chunky `quads` on land, fine `quads` on a skinny river) — and even on the same kind of
+  region across states (Arizona's wide forests vs. another state's thin parks). See
+  `scaled_base` in `make_state.py`.
 - **Grout is a constant fraction of each tile.** So a region reads the same "size" no matter
   which shape family fills it — thin water keeps its colour instead of dissolving into grout.
 - **Honest tradeoffs.** At the chunky mosaic resolution, features smaller than ~1 tile (e.g.
