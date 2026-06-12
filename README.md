@@ -5,7 +5,7 @@ style of Ellen Harvey's _Green Map_ (2019) at the Grand Hyatt at SFO. Each regio
 land, parks, water — is rendered in its own family of hand-cut-looking tiles, and you choose
 which shape family fills each one.
 
-> **🔗 Live site: [us-mosaic-map.netlify.app](https://us-mosaic-map.netlify.app)**
+> **🔗 Live site: [us-mosaic-greenmap.netlify.app](https://us-mosaic-greenmap.netlify.app)**
 
 The site loads on a mosaic of the whole United States (Albers projection, Alaska & Hawaii as
 insets); **click any state** to drill into it, and pick a shape family for **land / parks /
