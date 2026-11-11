@@ -22,8 +22,9 @@ the specific idea taken from Harvey's piece is one principle:
 
 ## Quick start
 
-Requires `python3` with `numpy`, `scipy`, `Pillow` (and `matplotlib` for the DC analysis tools).
-No other dependencies — all map data is fetched from public ArcGIS endpoints with the stdlib.
+Requires `python3` with `numpy`, `scipy`, `Pillow`, and `PyYAML` (imported by `build_site.py`, which
+`build_national.py` also imports); `matplotlib` for the DC analysis tools; and the `us` package for
+`build_labels.py`. All map data is fetched from public ArcGIS endpoints with the stdlib.
 
 ```bash
 # one state -> output/<state>_greenmap.png
